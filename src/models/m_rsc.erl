@@ -95,12 +95,7 @@ m_find_value(is_cat, #m{value=Id} = M, _Context) when is_integer(Id) ->
 m_find_value(Key, #m{value={is_cat, Id}}, Context) -> 
     is_cat(Id, Key, Context);
 m_find_value(Key, #m{value=Id}, Context) when is_integer(Id) ->
-    case z_acl:rsc_prop_visible(Id, Key, Context) of
-        true ->
-            p_no_acl(Id, Key, Context);
-        false ->
-            undefined
-    end.
+    p(Id, Key, Context).
 
 %% @doc Transform a m_config value to a list, used for template loops
 %% @spec m_to_list(Source, Context) -> List
@@ -327,6 +322,21 @@ is_me(Id, Context) ->
             false
     end.
 
+is_published_date(Id, Context) ->
+    case rid(Id, Context) of
+        RscId when is_integer(RscId) ->
+            case m_rsc:p_no_acl(RscId, is_published, Context) of
+                true ->
+                    Date = calendar:local_time(),
+                    m_rsc:p_no_acl(RscId, publication_start, Context) =< Date 
+                      andalso m_rsc:p_no_acl(RscId, publication_end, Context) >= Date;
+                false ->
+                    false
+            end;
+        _ ->
+            false
+    end.
+
 
 %% @doc Fetch a property from a resource. When the rsc does not exist, the property does not
 %% exist or the user does not have access rights to the property then return 'undefined'.
@@ -351,10 +361,16 @@ p(Id, Property, Context) ->
             undefined;
         RId ->
             case z_acl:rsc_visible(RId, Context) of
-                true -> p_no_acl(RId, Property, Context);
-                false -> undefined
+                true -> 
+                    case z_acl:rsc_prop_visible(RId, Property, Context) of
+                        true -> p_no_acl(RId, Property, Context);
+                        false -> undefined
+                    end;
+                false ->
+                    undefined
             end
     end.
+
 %% Fetch property from a resource; but return a default value if not found.
 p(Id, Property, DefaultValue, Context) ->
     case p(Id, Property, Context) of
@@ -377,6 +393,7 @@ p_no_acl(Id, is_me, Context) -> is_me(Id, Context);
 p_no_acl(Id, is_visible, Context) -> is_visible(Id, Context);
 p_no_acl(Id, is_editable, Context) -> is_editable(Id, Context);
 p_no_acl(Id, is_deletable, Context) -> is_deletable(Id, Context);
+p_no_acl(Id, is_published_date, Context) -> is_published_date(Id, Context);
 p_no_acl(Id, is_a, Context) -> [ {C,true} || C <- is_a(Id, Context) ];
 p_no_acl(Id, exists, Context) -> exists(Id, Context);
 p_no_acl(Id, page_url_abs, Context) -> 
