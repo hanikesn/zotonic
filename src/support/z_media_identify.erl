@@ -260,11 +260,10 @@ extension(Mime, PreferExtension) ->
             first_extension(Extensions);
         _ ->
             %% convert prefer extension to something that mimetypes likes
-            Ext1 = z_convert:to_list(PreferExtension),
+            Ext1 = z_convert:to_binary(z_string:to_lower(PreferExtension)),
             Ext2 = case Ext1 of
-                       [$.|Rest] ->
-                           z_convert:to_binary(Rest);
-                       _ -> z_convert:to_binary(Ext1)
+                       <<$.,Rest/binary>> -> Rest;
+                       _ -> Ext1
                    end,
             case lists:member(Ext2, Extensions) of
                 true ->
@@ -285,7 +284,7 @@ first_extension(Extensions) ->
 %% @doc  Guess the mime type of a file by the extension of its filename.
 -spec guess_mime(string() | binary()) -> string().
 guess_mime(File) ->
-	case mimetypes:filename(z_convert:to_binary(File)) of
+	case mimetypes:filename(z_convert:to_binary(z_string:to_lower(File))) of
 		[Mime|_] -> z_convert:to_list(Mime);
 		[] -> "application/octet-stream"
 	end.
@@ -295,7 +294,7 @@ guess_mime(File) ->
 -spec exif_orientation(string()) -> 1|2|3|4|5|6|7|8.
 exif_orientation(InFile) ->
     %% FIXME - don't depend on external command
-    case string:tokens(os:cmd("exif -m -t Orientation " ++ z_utils:os_filename(InFile)), "\n") of
+    case string:tokens(exif_orientation_cmd(InFile), "\n") of
         [] -> 
             1;
         [Line|_] -> 
@@ -313,6 +312,13 @@ exif_orientation(InFile) ->
             end
     end.
 
+exif_orientation_cmd(File) ->
+    exif_orientation_cmd_1(os:type(), File).
+
+exif_orientation_cmd_1({win32, _}, File) ->
+    os:cmd("exif -m -t Orientation " ++ z_utils:os_filename(File));
+exif_orientation_cmd_1({_Unix, _}, File) ->
+    os:cmd("LANG=en exif -m -t Orientation " ++ z_utils:os_filename(File)).
 
 %% @doc Given a mime type, return whether its file contents is already compressed or not.
 -spec is_mime_compressed(string()) -> boolean().

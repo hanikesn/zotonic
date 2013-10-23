@@ -6,9 +6,11 @@
 					cat=cat_id
 					in_sorter=in_sorter}
 %}
-{% wire name="admin-menu-edit" 
-		action=admin_menu_edit_action|default:{dialog_edit_basics callback="window.zMenuEditDone"} 
-%}
+{% if admin_menu_edit_action /= `none` %}
+	{% wire name="admin-menu-edit" 
+			action=admin_menu_edit_action|default:{dialog_edit_basics callback="window.zMenuEditDone"} 
+	%}
+{% endif %}
 
 {% javascript %}
 
@@ -18,13 +20,13 @@ $('#{{ menu_id }}').on('click', '.menu-edit', function(e) {
 	window.zMenuEditDone = function(id, title) {
 		$(".title-"+id).html(title);
 	};
-	$('#rscform').mask();
 	z_event("admin-menu-edit", { id: id, tree_id: {{ tree_id|default:"undefined" }} });
 	e.preventDefault();
 });
 
 $('#{{ menu_id }}').on('click', '.dropdown-menu a', function(e) {
 	var where = $(this).data('where');
+	var $menuedit = $(this).closest(".do_menuedit");
 	var $menu_item = $(this).closest('li.menu-item');
 	var $sorter = $('#{{ in_sorter }}');
 
@@ -39,7 +41,7 @@ $('#{{ menu_id }}').on('click', '.dropdown-menu a', function(e) {
 	} else if (where == 'copy') {
 		z_notify("menu-item-copy", {
 				id: $menu_item.children('div').data('page-id'),
-				item_template: $('#{{ menu_id }} .do_menuedit').data('menuedit').options.item_template
+				item_template: $menuedit.data('menuedit').options.item_template
 			});
 	} else {
 		window.zMenuEditDone = function(v) {
@@ -69,7 +71,7 @@ $('#{{ menu_id }}').on('click', '.dropdown-menu a', function(e) {
 					id: v.object_id, 
 					callback: "window.zMenuNewItem", 
 					z_delegate:"mod_menu",
-					item_template: $('#{{ menu_id }} .do_menuedit').data('menuedit').options.item_template
+					item_template: $menuedit.data('menuedit').options.item_template
 				});
 		};
 		z_event("admin-menu-select", {tab: "{{ connect_tab|default:"find" }}"});

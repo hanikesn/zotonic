@@ -5,12 +5,14 @@
 {% endjavascript %}
 
 {% block tinymce_init %}
-	{% catinclude "_admin_frontend_tinymce_init.tpl" id %}
+	{% catinclude "_admin_frontend_tinymce_init.tpl" id tree_id=tree_id %}
 {% endblock %}
+
+{% block rscform %}
 
 {% with id.is_editable as is_editable %}
 {% with m.config.i18n.language_list.list as languages %}
-{% wire id="rscform" type="submit" postback="rscform" delegate=`controller_admin_edit` %}
+{% wire id="rscform" type="submit" postback={rscform view_location=view_location} delegate=`controller_admin_edit` %}
 <form id="rscform" method="post" action="postback" class="form-horizontal">
 	<input type="hidden" name="id" value="{{ id }}" />
 
@@ -53,16 +55,26 @@
 	{% endblock %}
 
 	<div class="row-fluid meta-extra" id="meta-extra" style="display:none">
-		{% if m.modules.info.mod_translation.enabled %}
-		<fieldset>
-			<legend>{_ Language _}</legend>
-			{% optional include "_translation_edit_languages.tpl" %}
-		</fieldset>
-		{% endif %}
-		<fieldset>
-			<legend>{_ Access control _}</legend>
-			{% include "_admin_edit_visible_for.tpl" id=id is_admin_frontend %}
-		</fieldset>
+		<ul class="nav nav-tabs">
+			{% block meta_tabs %}{% endblock %}
+			{% if m.modules.info.mod_translation.enabled %}
+				<li><a href="#meta-language" data-toggle="tab">{_ Language _}</a></li>
+			{% endif %}
+			<li><a href="#meta-acl" data-toggle="tab">{_ Access control _}</a></li>
+		</ul>
+		<div class="tab-content">
+			{% block meta_panels %}{% endblock %}
+			<div class="tab-pane" id="meta-language">
+				{% optional include "_translation_edit_languages.tpl" %}
+			</div>
+			<div class="tab-pane" id="meta-acl">
+				{% include "_admin_edit_visible_for.tpl" id=id is_admin_frontend %}
+			</div>
+		</div>
+
+		{% javascript %}
+			$('#meta-extra .nav-tabs a:first').tab('show');
+		{% endjavascript %}
 	</div>
 
 	<div id="poststuff">
@@ -88,14 +100,25 @@
 
 	{# Hidden safe buttons and publish state - controlled via the nabvar #}
 	<div style="display: none">
-		{% button type="submit" id="save_stay" class="btn btn-primary" text=_"Save" title=_"Save this page." disabled=not id.is_editable %}
-	
-		{% if id.is_editable %}
-			{% button type="submit" id="save_view" class="btn" text=_"Save &amp; view" title=_"Save and view the page." %}
-		{% else %}
-			{% button id="save_view" class="btn btn-primary" text=_"View" title=_"View this page." action={redirect id=id} %}
-		{% endif %}
+		<span id="button-prompt">{% block nav_prompt %}{_ This _} {{ id.category_id.title }}{% endblock %}</span>
+
+		{% block buttons %}
+			{% button type="submit" id="save_stay" class="btn btn-primary" text=_"Save" title=_"Save this page." disabled=not id.is_editable %}
+		
+			{% if id.is_editable %}
+				{% button type="submit" id="save_view" class="btn" text=_"Save &amp; view" title=_"Save and view the page." %}
+			{% else %}
+				{% button id="save_view" class="btn btn-primary" text=_"View" title=_"View this page." action={redirect id=id} %}
+			{% endif %}
+		{% endblock %}
 	</div>
 </form>
 {% endwith %}
 {% endwith %}
+
+{% javascript %}
+	$("#save-buttons .brand").html($('#button-prompt').html());
+{% endjavascript %}
+
+{% endblock %}
+
