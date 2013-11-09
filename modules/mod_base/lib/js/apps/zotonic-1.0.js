@@ -24,11 +24,10 @@ Based on nitrogen.js which is copyright 2008-2009 Rusty Klophaus
 ---------------------------------------------------------- */
 
 var z_ws					= false;
-var z_ws_opened				= false;
-var z_ws_retries            = 0;
+var z_ws_pong_count         = 0;
+var z_ws_ping_timeout;
 var z_stream_host;
 var z_websocket_host;
-var z_comet_is_running		= false;
 var z_doing_postback		= false;
 var z_spinner_show_ct		= 0;
 var z_postbacks				= [];
@@ -161,24 +160,17 @@ function z_notify(message, extraParams)
 
 function z_postback_check()
 {
-    if (z_postbacks.length == 0)
+    if (z_postbacks.length === 0)
     {
         z_doing_postback = false;
     }
     else
     {
-        if (z_postback_connected())
-        {
-            // Send only a single postback at a time.
-            z_doing_postback = true;
+        // Send only a single postback at a time.
+        z_doing_postback = true;
 
-            var o = z_postbacks.shift();
-            z_do_postback(o.triggerID, o.postback, o.extraParams);
-        }
-        else
-        {
-            setTimeout("z_postback_check()", 10);
-        }
+        var o = z_postbacks.shift();
+        z_do_postback(o.triggerID, o.postback, o.extraParams);
     }
 }
 
@@ -261,13 +253,6 @@ function z_queue_postback(triggerID, postback, extraParams, noTriggerValue)
 }
 
 
-// Wait with sending postbacks till the websocket connection is open
-function z_postback_connected()
-{
-    return !z_ws || z_ws.readyState != 0;
-}
-
-
 function z_do_postback(triggerID, postback, extraParams)
 {
     // Get params...
@@ -278,8 +263,7 @@ function z_do_postback(triggerID, postback, extraParams)
         "&" + $.param(extraParams);
 
     // logon_form and .setcookie forms are always posted, as they will set cookies.
-    if (   z_ws
-        && z_ws.readyState == 1
+    if (   z_websocket_is_connected()
         && triggerID != "logon_form"
         && (triggerID == '' || !$('#'+triggerID).hasClass("setcookie")))
     {
@@ -508,53 +492,58 @@ function z_tinymce_remove(element)
 function z_stream_start(host, websocket_host)
 {
     z_stream_host = host;
-    z_websocket_host = websocket_host || host;
-    if (!z_ws && !z_comet_is_running)
+    z_websocket_host = websocket_host || window.location.host;
+    setTimeout(function() { z_comet_start(); }, 1000);
+    if ("WebSocket" in window)
     {
-        if ("WebSocket" in window)
-        {
-            z_websocket_start(host);
-        }
-        else
-        {
-            setTimeout(function() { z_comet(host); }, 2000);
-            z_comet_is_running = true;
-        }
+        setTimeout(function() { z_websocket_start(); }, 200);
     }
 }
 
-function z_comet(host)
+function z_comet_start()
 {
-    if (host != window.location.host && window.location.protocol == "http:")
+    if (z_stream_host != window.location.host && window.location.protocol == "http:")
     {
-        var url = window.location.protocol + '//' + host + "/comet/subdomain?z_pageid=" + urlencode(z_pageid);
-        var comet = $('<iframe id="z_comet_connection" name="z_comet_connection" src="'+url+'" />');
-        comet.css({ position: 'absolute', top: '-1000px', left: '-1000px' });
-        comet.appendTo("body");
+        var $zc = $('#z_comet_connection');
+        if ($zc.length > 0) {
+            $zc.attr('src', $zc.attr('src'));
+        } else {
+            var url = window.location.protocol + '//' + z_stream_host + "/comet/subdomain?z_pageid=" + urlencode(z_pageid);
+            var comet = $('<iframe id="z_comet_connection" name="z_comet_connection" src="'+url+'" />');
+            comet.css({ position: 'absolute', top: '-1000px', left: '-1000px' });
+            comet.appendTo("body");
+        }
     }
     else
     {
-        z_comet_host();
+        z_comet_poll_ajax();
     }
 }
 
-function z_comet_host()
+function z_comet_poll_ajax()
 {
-    $.ajax({
-        url: window.location.protocol + '//' + window.location.host + '/comet',
-        type:'post',
-        data: "z_pageid=" + urlencode(z_pageid),
-        dataType: 'text',
-        success: function(data, textStatus)
-        {
-            z_comet_data(data);
-            setTimeout(function() { z_comet_host(); }, 1000);
-        },
-        error: function(xmlHttpRequest, textStatus, errorThrown)
-        {
-            setTimeout(function() { z_comet_host(); }, 1000);
-        }
-    });
+    if (z_ws_pong_count === 0)
+    {
+	    $.ajax({
+	        url: window.location.protocol + '//' + window.location.host + '/comet',
+	        type:'post',
+	        data: "z_pageid=" + urlencode(z_pageid),
+	        dataType: 'text',
+	        success: function(data, textStatus)
+	        {
+	            z_comet_data(data);
+	            setTimeout(function() { z_comet_poll_ajax(); }, 500);
+	        },
+	        error: function(xmlHttpRequest, textStatus, errorThrown)
+	        {
+	            setTimeout(function() { z_comet_poll_ajax(); }, 1000);
+	        }
+	    });
+    }
+    else
+    {
+        setTimeout(function() { z_comet_poll_ajax(); }, 5000);
+    }
 }
 
 
@@ -572,70 +561,91 @@ function z_comet_data(data)
 }
 
 
-function z_websocket_restart()
-{
-    if (z_ws) {
-        try { z_ws.close(); } catch(e) {}; // closing an already closed ws can raise exceptions.
-        z_ws_opened = false;
-        setTimeout(function() { z_websocket_start(z_stream_host); }, 100);
-    }
-}
-
-
-function z_websocket_start(host)
+function z_websocket_start()
 {
     var protocol = "ws:";
     if (window.location.protocol == "https:")
     {
         protocol = "wss:";
     }
-    z_ws = new WebSocket(protocol+"//"+z_websocket_host+"/websocket?z_pageid="+z_pageid+"&z_ua="+z_ua);
 
-    var connect_timeout = setTimeout(function() { 
-        if(z_ws && z_ws.readyState != 0) {
-            try { z_ws.close(); } catch(e) {}; // closing an already closed ws can raise exceptions.
-            z_ws = undefined;
-            z_ws_opened = false;
-            return;
-        }
-        // Failed to open a websocket within the specified time - try to start comet
-        z_ws = undefined;
-        z_comet(host);
-    }, 2000); 
+    try {
+        z_ws = new WebSocket(protocol+"//"+z_websocket_host+"/websocket?z_pageid="+z_pageid+"&z_ua="+z_ua);
+    } catch (e) {
+        z_ws_pong_count = 0;
+    }
 
-    z_ws.onopen = function() { 
-        clearTimeout(connect_timeout);
-        z_ws_opened = true; 
+    z_ws.onopen = function() {
+        z_websocket_ping();
     };
-    z_ws.onerror = function() { };
+    
+    z_ws.onerror = function() {
+        z_websocket_restart();
+    };
 
     z_ws.onclose = function (evt)
     {
-        if (z_ws_opened && z_ws_retries < 1)
-        {
-            z_ws_opened = false;
-            // Try to reopen once, might be closed due to an server side error
-            setTimeout(function() {
-                z_ws_retries += 1;
-                z_websocket_restart(host);
-            }, 100);
-        }
-        else
-        {
-            // Failed opening websocket connection - try to start comet
-            z_ws = undefined;
-            setTimeout(function() { z_comet(host); }, 2000);
-            z_comet_is_running = true;
-        }
+        z_websocket_restart();
     };
 
     z_ws.onmessage = function (evt)
     {
-        z_comet_data(evt.data);
-        setTimeout("z_postback_check()", 0);
+        if (!z_websocket_pong(evt.data)) {
+            z_comet_data(evt.data);
+            setTimeout("z_postback_check()", 0);
+        }
     };
 }
 
+function z_websocket_ping()
+{
+    setTimeout(function() {
+        if (z_ws && z_ws.readyState !== 0) {
+            z_ws.send('Z:PING:'+z_pageid);
+        }
+    }, 0);
+    if (typeof z_ws_ping_timeout !== 'undefined') {
+        clearTimeout(z_ws_ping_timeout);
+        z_ws_ping_timeout = undefined;
+    }
+    z_ws_ping_timeout = setTimeout(function() {
+        z_websocket_restart();
+    }, 5000);
+}
+
+function z_websocket_pong( data )
+{
+    if (data.substring(0,7) == 'Z:PONG:') {
+        if (data == 'Z:PONG:'+z_pageid) {
+            if (typeof z_ws_ping_timeout !== 'undefined') {
+                clearTimeout(z_ws_ping_timeout);
+                z_ws_ping_timeout = undefined;
+            }
+            z_ws_pong_count++;
+            setTimeout(function() { z_websocket_ping(); }, 20000);
+        }
+        return true;
+    } else {
+        return false;
+    }
+}
+
+function z_websocket_is_connected()
+{
+    return z_ws && z_ws.readyState !== 0 && z_ws_pong_count > 0;
+}
+
+function z_websocket_restart()
+{
+    if (z_ws) {
+        try { z_ws.close(); } catch(e) {} // closing an already closed ws can raise exceptions.
+        z_ws = undefined;
+    }
+    if (z_ws_pong_count > 0) {
+        z_ws_pong_count = 0;
+        z_websocket_start();
+    }
+}
 
 /* Utility functions
 ---------------------------------------------------------- */
@@ -978,7 +988,7 @@ $.fn.postbackFileForm = function(trigger_id, postback, validations)
     a.push({name: "postback", value: postback});
     a.push({name: "z_trigger_id", value: trigger_id});
     a.push({name: "z_pageid", value: z_pageid});
-    a.push({name: "z_comet", value: z_comet_is_running || z_ws});
+    a.push({name: "z_comet", value: typeof z_stream_host != 'undefined'});
 
     var $form = this;
     var options = {
