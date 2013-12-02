@@ -6,7 +6,7 @@
 
  {emqtt, [
     {auth, {zotonic, []}},
-    {access_control, {z_mqtt_auth, with_access_control}},
+    {access_control, {zotonic, []}},
     {listeners, [
         %%% Unescape to enable MQTT on the given port
         % {1883,  [
@@ -23,8 +23,8 @@
   [{handlers,
     [
       {lager_console_backend, info},
-      {lager_file_backend, [{file, "priv/sasl/error.log"},   {level, error}]},
-      {lager_file_backend, [{file, "priv/sasl/console.log"}, {level, info}]}
+      {lager_file_backend, [{file, "priv/log/error.log"},   {level, error}]},
+      {lager_file_backend, [{file, "priv/log/console.log"}, {level, info}]}
     ]},
    {crash_log, "priv/log/crash.log"}
   ]},
