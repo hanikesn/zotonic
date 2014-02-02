@@ -124,6 +124,9 @@
 %% @doc Used in the admin to fetch the possible blocks for display (foldl)
 -record(admin_edit_blocks, {id}).
 
+%% @doc Used in the admin to process a submitted resource form
+-record(admin_rscform, {id, is_a}).
+
 %% Used for fetching the menu in the admin (foldl)
 % admin_menu
 
@@ -433,6 +436,12 @@
 -record(debug, {what, arg=[]}).
 
 
+%% @doc mod_export - Check if the resource or dispatch is visible for export.
+-record(export_resource_visible, {
+			dispatch :: atom(),
+			id :: integer()
+ 		}).
+
 %% @doc mod_export - return the content type (like {ok, "text/csv"}) for the dispatch rule/id export.
 -record(export_resource_content_type, {
 		dispatch :: atom(),
@@ -447,7 +456,7 @@
 	}).
 
 %% @doc mod_export - Fetch the header for the export.
-%% The 'first' notification should return: {ok, binary()} | {ok, binary(), ContinuationState} | {error, Reason}.
+%% The 'first' notification should return: {ok, list()|binary()} | {ok, list()|binary(), ContinuationState} | {error, Reason}.
 -record(export_resource_header, {
 		dispatch :: atom(),
 		id :: integer(),
