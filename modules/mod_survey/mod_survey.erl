@@ -22,7 +22,7 @@
 -mod_title("Survey").
 -mod_description("Create and publish questionnaires.").
 -mod_prio(400).
--mod_schema(2).
+-mod_schema(3).
 -mod_depends([admin]).
 -mod_provides([survey, poll]).
 
@@ -323,7 +323,7 @@ render_next_page(Id, PageNr, Direction, Answers, History, Context) ->
     eval_page_jumps({[], _Nr}, _Answers, _Context) ->
         submit;
     eval_page_jumps({[Q|L],Nr} = QsNr, Answers, Context) ->
-        case is_page_end(Q) or is_button(Q) of
+        case is_page_end(Q) of
             true ->
                 case test(Q, Answers, Context) of
                     ok -> 
@@ -335,7 +335,8 @@ render_next_page(Id, PageNr, Direction, Answers, History, Context) ->
                             stop -> stop;
                             submit -> submit;
                             {[], _Nr} -> {error, {not_found, Name}};
-                            NextQsNr -> eval_page_jumps(NextQsNr, Answers, Context)
+                            NextQsNr -> 
+                                eval_page_jumps(NextQsNr, Answers, Context)
                         end;
                     {error, Reason} ->
                         {error, Reason}
@@ -438,9 +439,6 @@ is_page_end(Block) ->
         <<"survey_stop">> -> true;
         _ -> false
     end.
-
-is_button(Block) ->
-    proplists:get_value(type, Block) =:= <<"survey_button">>.
 
 
 %% @doc Collect all answers per question, save to the database.
